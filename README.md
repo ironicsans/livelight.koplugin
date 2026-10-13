@@ -20,7 +20,7 @@ Developed and tested on a **Kobo Clara BW** running **KOReader 2026.07.02**, whi
 
 It should theoretically work on any touch device where KOReader can control the frontlight, but that is untested. Reports from other devices are welcome.
 
-Devices without a warmth light get brightness on the left edge only. The right edge is left alone.
+Devices without a warmth light get brightness on the left edge only (or the right edge, if you turn on swap sides). The other edge is left alone.
 
 ## Install
 
@@ -37,7 +37,8 @@ To uninstall, delete the folder.
 
 Put a finger on the left or right edge of the screen (the outer eighth) and slide up or down. Start moving right away. If you rest your finger for about half a second, KOReader treats it as a long-press.
 
-- About 70% of the screen height covers the full range.
+- At the default sensitivity, about 70% of the screen height covers the full range. This is adjustable in [Settings](#settings).
+- Slides that start in the top or bottom 15% of the screen are left to KOReader, so swiping down from the top or up from the bottom still opens its menus. This is adjustable in [Settings](#settings).
 - Sliding brightness all the way down turns the light off; sliding back up turns it on.
 - Once a slide has started, your finger can wander off the edge strip and it keeps working until you lift.
 
@@ -53,8 +54,11 @@ Top menu → gear icon → Taps and gestures → Live Light:
 
 - **Enable Live Light**: the main on/off switch.
 - **Show level while sliding**: show or hide the box with the number.
+- **Swap sides (warmth left, brightness right)**: off by default. Turn it on to put warmth on the left edge and brightness on the right.
+- **Sensitivity**: how far the light changes for a given slide, from 50% to 200% (default 100%). Higher means a shorter slide covers the full range; lower gives finer control.
+- **Top dead zone** and **Bottom dead zone**: the share of the screen height, from 0% to 40% (default 15% each), at the top and bottom where Live Light ignores slides so they do not collide with KOReader's own top and bottom swipes. Set to 0% to turn one off.
 
-![Settings](images/settings.jpg)
+<img src="images/settings.jpg" alt="Settings" width="360">
 
 ## Where it works
 

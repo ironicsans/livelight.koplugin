@@ -37,6 +37,7 @@ local LeftContainer = require("ui/widget/container/leftcontainer")
 local Math = require("optmath")
 local Menu = require("ui/widget/menu")
 local Size = require("ui/size")
+local SpinWidget = require("ui/widget/spinwidget")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -56,8 +57,15 @@ local SETTINGS_KEY = "livelight"
 -- KOReader's own edge swipes use.
 local EDGE = 1 / 8
 -- Share of the screen height a finger travels to go from one end of the
--- range to the other.
+-- range to the other, at the default sensitivity of 100%.
 local FULL_RANGE_TRAVEL = 0.7
+-- Bounds of the sensitivity setting, in percent. Higher means a shorter slide
+-- covers the same change.
+local SENSITIVITY_MIN, SENSITIVITY_MAX, SENSITIVITY_DEFAULT = 50, 200, 100
+-- Strips at the top and bottom of the screen, as a percentage of its height,
+-- where a slide is never taken over, so KOReader's own top and bottom swipes
+-- (the menus) keep working at the corners.
+local DEADZONE_MAX, DEADZONE_DEFAULT = 40, 15
 -- The light itself changes on every step; only the box is held back, so
 -- the e-ink screen is not asked to redraw faster than it can.
 local DRAW_INTERVAL = 0.15
@@ -75,6 +83,15 @@ local function settings()
     if type(stored) ~= "table" then stored = {} end
     if stored.enabled == nil then stored.enabled = true end
     if stored.show_level == nil then stored.show_level = true end
+    if stored.swap_sides == nil then stored.swap_sides = false end
+    if type(stored.sensitivity) ~= "number" then
+        stored.sensitivity = SENSITIVITY_DEFAULT
+    end
+    stored.sensitivity = math.max(SENSITIVITY_MIN, math.min(SENSITIVITY_MAX, stored.sensitivity))
+    for _i, key in ipairs({ "top_deadzone", "bottom_deadzone" }) do
+        if type(stored[key]) ~= "number" then stored[key] = DEADZONE_DEFAULT end
+        stored[key] = math.max(0, math.min(DEADZONE_MAX, stored[key]))
+    end
     return stored
 end
 
@@ -114,12 +131,27 @@ local warmth = {
 }
 
 local function controlAt(pos)
-    local width = Screen:getWidth()
-    if pos.x < width * EDGE then
-        return brightness
-    elseif pos.x >= width * (1 - EDGE) and Device:hasNaturalLight() then
-        return warmth
+    local stored = settings()
+    local height = Screen:getHeight()
+    if pos.y < height * stored.top_deadzone / 100
+            or pos.y >= height * (1 - stored.bottom_deadzone / 100) then
+        return nil
     end
+    local width = Screen:getWidth()
+    local left, right = brightness, warmth
+    if settings().swap_sides then
+        left, right = warmth, brightness
+    end
+    local control
+    if pos.x < width * EDGE then
+        control = left
+    elseif pos.x >= width * (1 - EDGE) then
+        control = right
+    end
+    if control == warmth and not Device:hasNaturalLight() then
+        return nil
+    end
+    return control
 end
 
 -- ── Level box ───────────────────────────────────────────────────────────────
@@ -283,7 +315,8 @@ local function begin(key, control, y)
 end
 
 local function moveTo(y)
-    local step = Screen:getHeight() * FULL_RANGE_TRAVEL / (slide.max - slide.min)
+    local travel = FULL_RANGE_TRAVEL * 100 / settings().sensitivity
+    local step = Screen:getHeight() * travel / (slide.max - slide.min)
     local level = Math.round(slide.start + (slide.anchor_y - y) / step)
     -- Past either end, drag the anchor along with the finger, so that
     -- turning back takes effect at once instead of after retracing the excess.
@@ -524,13 +557,40 @@ function LiveLight:onSuspend()
 end
 
 function LiveLight:addToMainMenu(menu_items)
+    local function deadzoneItem(key, label, title, help)
+        return {
+            text_func = function() return T(label, settings()[key]) end,
+            help_text = help,
+            enabled_func = function() return settings().enabled end,
+            keep_menu_open = true,
+            callback = function(touchmenu_instance)
+                UIManager:show(SpinWidget:new{
+                    title_text = title,
+                    info_text = _("Share of the screen height, measured from the edge, where slides are left to KOReader."),
+                    value = settings()[key],
+                    value_min = 0,
+                    value_max = DEADZONE_MAX,
+                    value_step = 5,
+                    value_hold_step = 10,
+                    default_value = DEADZONE_DEFAULT,
+                    unit = "%",
+                    ok_text = _("Set"),
+                    callback = function(spin)
+                        saveSetting(key, spin.value)
+                        if touchmenu_instance then touchmenu_instance:updateItems() end
+                    end,
+                })
+            end,
+        }
+    end
+
     menu_items.livelight = {
         text = _("Live Light"),
         sorting_hint = "taps_and_gestures",
         sub_item_table = {
             {
                 text = _("Enable Live Light"),
-                help_text = _("Slide a finger up or down the left edge for brightness, or the right edge for warmth. The light follows your finger as it moves. When this is off, the edges go back to whatever is set in the gesture manager."),
+                help_text = _("Slide a finger up or down the left edge for brightness, or the right edge for warmth (swappable below). The light follows your finger as it moves. When this is off, the edges go back to whatever is set in the gesture manager."),
                 checked_func = function() return settings().enabled end,
                 callback = function() saveSetting("enabled", not settings().enabled) end,
             },
@@ -541,6 +601,41 @@ function LiveLight:addToMainMenu(menu_items)
                 checked_func = function() return settings().show_level end,
                 callback = function() saveSetting("show_level", not settings().show_level) end,
             },
+            {
+                text = _("Swap sides (warmth left, brightness right)"),
+                help_text = _("Put warmth on the left edge and brightness on the right edge, instead of the other way round."),
+                enabled_func = function() return settings().enabled end,
+                checked_func = function() return settings().swap_sides end,
+                callback = function() saveSetting("swap_sides", not settings().swap_sides) end,
+            },
+            {
+                text_func = function() return T(_("Sensitivity: %1%"), settings().sensitivity) end,
+                help_text = _("How far the light changes for a given slide. Higher means a shorter slide covers the full range; lower means finer control."),
+                enabled_func = function() return settings().enabled end,
+                keep_menu_open = true,
+                callback = function(touchmenu_instance)
+                    UIManager:show(SpinWidget:new{
+                        title_text = _("Sensitivity"),
+                        info_text = _("Higher: a shorter slide changes the light more."),
+                        value = settings().sensitivity,
+                        value_min = SENSITIVITY_MIN,
+                        value_max = SENSITIVITY_MAX,
+                        value_step = 10,
+                        value_hold_step = 50,
+                        default_value = SENSITIVITY_DEFAULT,
+                        unit = "%",
+                        ok_text = _("Set"),
+                        callback = function(spin)
+                            saveSetting("sensitivity", spin.value)
+                            if touchmenu_instance then touchmenu_instance:updateItems() end
+                        end,
+                    })
+                end,
+            },
+            deadzoneItem("top_deadzone", _("Top dead zone: %1%"), _("Top dead zone"),
+                _("Slides that start this close to the top of the screen are ignored by Live Light, so a swipe down there still opens KOReader's top menu. Set to 0 to turn off.")),
+            deadzoneItem("bottom_deadzone", _("Bottom dead zone: %1%"), _("Bottom dead zone"),
+                _("Slides that start this close to the bottom of the screen are ignored by Live Light, so a swipe up there still opens KOReader's bottom menu. Set to 0 to turn off.")),
         },
     }
 end
