@@ -4,6 +4,7 @@ A KOReader plugin that makes the brightness and warmth edge swipes behave the wa
 
 - Slide up or down the **left edge** of the screen for brightness.
 - Slide up or down the **right edge** for warmth.
+- Prefer them the other way round? There’s a setting to swap the sides.
 - A small box shows the level as you go.
 
 | Brightness | Warmth |
@@ -16,17 +17,23 @@ Top row: a [Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) home scre
 
 ## Tested on
 
-Developed and tested on a **Kobo Clara BW** running **KOReader 2026.07.02**, which is the only setup it has been tried on.
+Developed and tested on a **Kobo Clara BW** running **KOReader 2026.07.02**. Users have reported good experiences running this plug-in on:
 
-It should theoretically work on any touch device where KOReader can control the frontlight, but that is untested. Reports from other devices are welcome.
+- **Kobo**: Clara BW; Clara Colour; Libra; Libra Colour
+- **Kindle**: Paperwhite 11th, 7th, 5th gen; Colorsoft SE 2024; Scribe
+- **PocketBook**: Verse; Era Color
 
-Devices without a warmth light get brightness on the left edge only. The right edge is left alone.
+People have reported some delay with the PocketBook Era Lite and Nook GlowLight 4 Plus. (Contact me if this effects you and you want to test a potential fix for it. I can't test it myself.)
 
-## Install
+Reports from other devices are welcome.
+
+Devices without a warmth light get brightness on the left edge only. The right edge is left alone. (Or vice versa if you have "Swap Sides" turned on.)
+
+## Install or update
 
 1. Download `livelight.koplugin.zip` from the [Releases](../../releases) page and unzip it. You should have a folder named `livelight.koplugin`.
 2. Connect your e-reader to a computer with USB.
-3. Copy the `livelight.koplugin` folder into KOReader's `plugins` folder. On a Kobo that is `.adds/koreader/plugins/`. The `.adds` folder is hidden: on a Mac, press **Cmd+Shift+.** in Finder to show it.
+3. Copy into or replace the `livelight.koplugin` folder in KOReader's `plugins` folder. On a Kobo that is `.adds/koreader/plugins/`. The `.adds` folder is hidden: on a Mac, press **Cmd+Shift+.** in Finder to show it.
 4. Eject the device and restart KOReader.
 
 If you already have edge-swipe settings set up, you do not need to change or disable them. Live Light takes priority over KOReader's built-in edge swipes while it is switched on, and hands the edges back when it is switched off.
@@ -62,7 +69,7 @@ Top menu → gear icon → Taps and gestures → Live Light:
 Tested on the device:
 
 - **While reading a book.**
-- **[Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) home screens**.
+- **[Bookshelf](https://github.com/AndyHazz/bookshelf.koplugin) home screens.**
 
 It deliberately stays out of full-screen viewers such as the image viewer.
 
