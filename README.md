@@ -23,7 +23,7 @@ Developed and tested on a **Kobo Clara BW** running **KOReader 2026.07.02**. Use
 - **Kindle**: Paperwhite 11th, 7th, 5th gen; Colorsoft SE 2024; Scribe
 - **PocketBook**: Verse; Era Color
 
-People have reported some delay with the PocketBook Era Lite and Nook GlowLight 4 Plus. (Contact me if this effects you and you want to test a potential fix for it. I can't test it myself.)
+People have reported some delay with the PocketBook Era Lite and Nook GlowLight 4 Plus.
 
 Reports from other devices are welcome.
 
