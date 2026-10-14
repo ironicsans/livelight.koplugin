@@ -53,6 +53,7 @@ Top menu → gear icon → Taps and gestures → Live Light:
 
 - **Enable Live Light**: the main on/off switch.
 - **Show level while sliding**: show or hide the box with the number.
+- **Swap sides**: brightness on the right edge and warmth on the left.
 
 ![Settings](images/settings.jpg)
 

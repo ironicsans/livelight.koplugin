@@ -42,7 +42,6 @@ local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local T = require("ffi/util").template
 local _ = require("gettext")
 
 if not (Device:hasFrontlight() and Device:isTouchDevice()) then
@@ -75,6 +74,7 @@ local function settings()
     if type(stored) ~= "table" then stored = {} end
     if stored.enabled == nil then stored.enabled = true end
     if stored.show_level == nil then stored.show_level = true end
+    if stored.swap_sides == nil then stored.swap_sides = false end
     return stored
 end
 
@@ -98,9 +98,9 @@ local brightness = {
         end
     end,
     name = _("Brightness"),
-    value = function(powerd, level)
-        return T(_("%1%"), Math.round((level - powerd.fl_min) / (powerd.fl_max - powerd.fl_min) * 100))
-    end,
+    -- The device's own level, as KOReader itself shows it: 0 to 100 on a
+    -- Kobo, 0 to 24 on a Kindle.
+    value = function(powerd, level) return tostring(level) end,
 }
 
 -- Warmth is handled in the device's own steps (0 to 10 on a Clara BW), as
@@ -115,9 +115,12 @@ local warmth = {
 
 local function controlAt(pos)
     local width = Screen:getWidth()
-    if pos.x < width * EDGE then
+    local on_left = pos.x < width * EDGE
+    if not on_left and pos.x < width * (1 - EDGE) then return end
+    -- Brightness on the left and warmth on the right, unless swapped.
+    if on_left ~= settings().swap_sides then
         return brightness
-    elseif pos.x >= width * (1 - EDGE) and Device:hasNaturalLight() then
+    elseif Device:hasNaturalLight() then
         return warmth
     end
 end
@@ -540,6 +543,13 @@ function LiveLight:addToMainMenu(menu_items)
                 enabled_func = function() return settings().enabled end,
                 checked_func = function() return settings().show_level end,
                 callback = function() saveSetting("show_level", not settings().show_level) end,
+            },
+            {
+                text = _("Swap sides"),
+                help_text = _("Brightness on the right edge and warmth on the left."),
+                enabled_func = function() return settings().enabled end,
+                checked_func = function() return settings().swap_sides end,
+                callback = function() saveSetting("swap_sides", not settings().swap_sides) end,
             },
         },
     }

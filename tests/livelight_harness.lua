@@ -288,7 +288,7 @@ do
     down(LEFT, 400)
     slide(LEFT, 800)
     check("light switched off, once", powerd.is_fl_on == false and log():find("off", 1, true) and not log():find("off.*off"), log())
-    check("box says 0%", boxText() == "Brightness 0%", boxText())
+    check("box says 0", boxText() == "Brightness 0", boxText())
     slide(LEFT, 800 - FULL * 0.1)
     check("sliding up from off turns it on at 10", powerd.is_fl_on and powerd.fl_intensity == 10, log())
     lift()
@@ -301,7 +301,7 @@ do
     fresh("level box: there at once, live but not flooding the screen")
     down(LEFT, 1000)
     slide(LEFT, 1000 - PAN_THRESHOLD - 1)
-    check("box appears as soon as the slide is recognized, with the current level", boxText() == "Brightness 40%", boxText())
+    check("box appears as soon as the slide is recognized, with the current level", boxText() == "Brightness 40", boxText())
     check("in the fast mode, and without its word yet", #dirty == 1 and dirty[1].mode == "fast" and dirty[1].part == "box" and dirty[1].word == "", #dirty)
     dirty = {}
     slide(LEFT, 1000 - PAN_THRESHOLD - FULL * 0.5, 0.01) -- 50 steps in about half a second
@@ -314,7 +314,7 @@ do
         else
             numbers = numbers + 1
             if d.mode ~= "fast" or d.part ~= "number" then all_fast = false end
-            local n = tonumber(d.text:match("(%d+)%%"))
+            local n = tonumber(d.text:match("(%d+)$"))
             if n < last then rising = false end
             last = n
         end
@@ -324,7 +324,7 @@ do
     check("every one of those is fast and covers the number only", all_fast)
     check("the numbers shown climb with the finger", rising and last > 40, last)
     advance(0.2)
-    check("when the finger pauses, the box catches up to the true level", boxText() == "Brightness 90%", boxText())
+    check("when the finger pauses, the box catches up to the true level", boxText() == "Brightness 90", boxText())
     dirty = {}
     advance(3)
     check("and is then left alone, however long the finger rests", #dirty == 0, #dirty)
@@ -355,7 +355,7 @@ do
     advance(0.5)
     down(RIGHT, 1000); slide(RIGHT, 1000 - PAN_THRESHOLD - FULL * 0.1)
     advance(1.5)
-    check("the warmth box is sized for warmth's own top value, not brightness's", shown[2].widest_value == "10" and shown[1].widest_value == "100%", shown[2].widest_value)
+    check("the warmth box is sized for warmth's own top value, not brightness's", shown[2].widest_value == "10" and shown[1].widest_value == "100", shown[2].widest_value)
     check("a fresh box replaces it, showing warmth, and stays while the slide is going", boxText() == "Warmth 6" and #shown == 2 and not shown[1].visible, boxText())
     lift(); advance(1.1)
     check("gone after that one ends", not boxVisible())
@@ -365,7 +365,7 @@ do
     down(LEFT, 1000); finger.y = 1000 - FULL * 0.3
     check("kept", flick() == true)
     check("applies the whole distance", powerd.fl_intensity == 70, powerd.fl_intensity)
-    check("box shown with the result, then removed", boxText() == "Brightness 70%", boxText())
+    check("box shown with the result, then removed", boxText() == "Brightness 70", boxText())
     advance(1.1); check("box gone", not boxVisible())
     down(LEFT, 1000); finger.x = 500
     check("a sideways flick from the edge is passed on", flick() == false and powerd.fl_intensity == 70)
@@ -434,11 +434,53 @@ do
     local items = {}
     plugin:addToMainMenu(items)
     local sub = items.livelight.sub_item_table
-    check("menu entry under Taps and gestures with two items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 2)
-    check("both on by default", sub[1].checked_func() and sub[2].checked_func())
+    check("menu entry under Taps and gestures with three items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 3)
+    check("both on by default, sides not swapped", sub[1].checked_func() and sub[2].checked_func() and sub[3].checked_func() == false)
+    sub[3].callback(); check("swap toggle saved", settings.livelight.swap_sides == true); sub[3].callback()
+    check("every label is short enough for the menu", #sub[1].text <= 26 and #sub[2].text <= 26 and #sub[3].text <= 26)
     sub[2].callback(); check("box toggle saved", settings.livelight.show_level == false); sub[2].callback()
     sub[1].callback(); check("main toggle saved; box toggle grayed out with it", settings.livelight.enabled == false and sub[2].enabled_func() == false)
     sub[1].callback(); check("and back on", settings.livelight.enabled == true and sub[2].enabled_func() == true)
+end
+
+do
+    fresh("sides swapped in settings")
+    settings.livelight = { swap_sides = true }
+    down(LEFT, 800); slide(LEFT, 800 - PAN_THRESHOLD - 1); slide(LEFT, 800 - PAN_THRESHOLD - 1 - FULL * 0.3)
+    check("left edge is now warmth", powerd:toNativeWarmth(powerd.fl_warmth) == 8 and powerd.fl_intensity == 40, log())
+    check("and the box says so", boxText() == "Warmth 8", boxText())
+    lift(); advance(1.1)
+    down(RIGHT, 800); slide(RIGHT, 800 - PAN_THRESHOLD - 1); slide(RIGHT, 800 - PAN_THRESHOLD - 1 - FULL * 0.2)
+    check("right edge is now brightness", powerd.fl_intensity == 60 and powerd:toNativeWarmth(powerd.fl_warmth) == 8, log())
+    lift()
+    down(MIDDLE, 800)
+    check("the middle is still left alone", slide(MIDDLE, 500) == false)
+    lift()
+    fresh("sides swapped on a device without warmth")
+    settings.livelight = { swap_sides = true }
+    has_warmth = false
+    down(LEFT, 800)
+    check("left edge, which would be warmth, is passed on", slide(LEFT, 500) == false and #light_log == 0)
+    lift()
+    down(RIGHT, 800)
+    check("right edge is brightness", slide(RIGHT, 500) == true and powerd.fl_intensity > 40)
+    lift()
+end
+do
+    fresh("a device with 24 brightness levels, like a Kindle")
+    powerd.fl_max, powerd.fl_intensity = 24, 10
+    down(LEFT, 1000); slide(LEFT, 1000 - PAN_THRESHOLD - 1)
+    check("the box shows the device's own level, not a percentage", boxText() == "Brightness 10", boxText())
+    light_log = {}
+    slide(LEFT, 1000 - PAN_THRESHOLD - 1 - FULL * 0.5)
+    check("half the travel is 12 of the 24 levels", powerd.fl_intensity == 22, powerd.fl_intensity)
+    check("one light change per level, so 12 in all", #light_log == 12, #light_log)
+    advance(0.2)
+    check("box follows", boxText() == "Brightness 22", boxText())
+    slide(LEFT, 100)
+    check("stops at the top level", powerd.fl_intensity == 24 and shown[#shown].widest_value == "24", powerd.fl_intensity)
+    lift()
+    powerd.fl_max = 100
 end
 
 -- A list on screen. Events reach it the way KOReader delivers them: pans to
@@ -493,7 +535,7 @@ do
     list:slide(LEFT, 930 - FULL * 0.2)
     check("a fifth of the travel further is +20", powerd.fl_intensity == base + 20, powerd.fl_intensity)
     advance(0.2)
-    check("box shown", boxText() == "Brightness " .. (base + 20) .. "%", boxText())
+    check("box shown", boxText() == "Brightness " .. (base + 20), boxText())
     check("the lift is heard", list:lift() ~= "nobody")
     check("and ends the slide", light_log[#light_log] == "resume-state")
     advance(1.1); check("box goes away", not boxVisible())
