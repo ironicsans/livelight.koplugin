@@ -1,5 +1,5 @@
 --[[--
-Live Light.
+LiveLight.
 
 KOReader's own edge swipes change the light once, after the finger lifts: it
 waits for the whole swipe, measures it, then jumps. This plugin listens to the
@@ -74,7 +74,14 @@ local function settings()
     if type(stored) ~= "table" then stored = {} end
     if stored.enabled == nil then stored.enabled = true end
     if stored.show_level == nil then stored.show_level = true end
-    if stored.swap_sides == nil then stored.swap_sides = false end
+    -- What each edge does: "brightness", "warmth" or "off". Before these
+    -- existed there was only a swap_sides switch, which they start out from.
+    if stored.left_edge == nil then
+        stored.left_edge = stored.swap_sides and "warmth" or "brightness"
+    end
+    if stored.right_edge == nil then
+        stored.right_edge = stored.swap_sides and "brightness" or "warmth"
+    end
     return stored
 end
 
@@ -117,10 +124,12 @@ local function controlAt(pos)
     local width = Screen:getWidth()
     local on_left = pos.x < width * EDGE
     if not on_left and pos.x < width * (1 - EDGE) then return end
-    -- Brightness on the left and warmth on the right, unless swapped.
-    if on_left ~= settings().swap_sides then
+    -- An edge that is off returns nothing, so its touches are passed on to
+    -- whatever the gesture manager has there.
+    local choice = settings()[on_left and "left_edge" or "right_edge"]
+    if choice == "brightness" then
         return brightness
-    elseif Device:hasNaturalLight() then
+    elseif choice == "warmth" and Device:hasNaturalLight() then
         return warmth
     end
 end
@@ -526,14 +535,57 @@ function LiveLight:onSuspend()
     abandon()
 end
 
+local EDGE_CHOICES = {
+    { value = "brightness", text = _("Brightness") },
+    { value = "warmth", text = _("Warmth"), needs_warmth = true },
+    { value = "off", text = _("Off") },
+}
+
+-- What an edge actually does on this device: warmth counts as off where
+-- there is no warmth to change.
+local function edgeChoice(key)
+    local choice = settings()[key]
+    if choice == "warmth" and not Device:hasNaturalLight() then return "off" end
+    return choice
+end
+
+-- One menu line per edge, showing its current choice, that opens a short
+-- list to pick from.
+local function edgeMenuItem(key, label)
+    local choices = {}
+    for _, choice in ipairs(EDGE_CHOICES) do
+        if not choice.needs_warmth or Device:hasNaturalLight() then
+            table.insert(choices, {
+                text = choice.text,
+                radio = true,
+                keep_menu_open = true,
+                checked_func = function() return edgeChoice(key) == choice.value end,
+                callback = function() saveSetting(key, choice.value) end,
+            })
+        end
+    end
+    return {
+        text_func = function()
+            for _, choice in ipairs(EDGE_CHOICES) do
+                if choice.value == edgeChoice(key) then
+                    return label .. ": " .. choice.text
+                end
+            end
+        end,
+        help_text = _("Off leaves this edge to whatever is set in the gesture manager."),
+        enabled_func = function() return settings().enabled end,
+        sub_item_table = choices,
+    }
+end
+
 function LiveLight:addToMainMenu(menu_items)
     menu_items.livelight = {
-        text = _("Live Light"),
+        text = _("LiveLight"),
         sorting_hint = "taps_and_gestures",
         sub_item_table = {
             {
-                text = _("Enable Live Light"),
-                help_text = _("Slide a finger up or down the left edge for brightness, or the right edge for warmth. The light follows your finger as it moves. When this is off, the edges go back to whatever is set in the gesture manager."),
+                text = _("Enable LiveLight"),
+                help_text = _("Slide a finger up or down the left edge for brightness, or the right edge for warmth (each edge can be changed below). The light follows your finger as it moves. When this is off, the edges go back to whatever is set in the gesture manager."),
                 checked_func = function() return settings().enabled end,
                 callback = function() saveSetting("enabled", not settings().enabled) end,
             },
@@ -544,13 +596,8 @@ function LiveLight:addToMainMenu(menu_items)
                 checked_func = function() return settings().show_level end,
                 callback = function() saveSetting("show_level", not settings().show_level) end,
             },
-            {
-                text = _("Swap sides"),
-                help_text = _("Brightness on the right edge and warmth on the left."),
-                enabled_func = function() return settings().enabled end,
-                checked_func = function() return settings().swap_sides end,
-                callback = function() saveSetting("swap_sides", not settings().swap_sides) end,
-            },
+            edgeMenuItem("left_edge", _("Left edge")),
+            edgeMenuItem("right_edge", _("Right edge")),
         },
     }
 end

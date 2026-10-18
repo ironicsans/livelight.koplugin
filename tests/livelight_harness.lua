@@ -434,10 +434,19 @@ do
     local items = {}
     plugin:addToMainMenu(items)
     local sub = items.livelight.sub_item_table
-    check("menu entry under Taps and gestures with three items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 3)
-    check("both on by default, sides not swapped", sub[1].checked_func() and sub[2].checked_func() and sub[3].checked_func() == false)
-    sub[3].callback(); check("swap toggle saved", settings.livelight.swap_sides == true); sub[3].callback()
-    check("every label is short enough for the menu", #sub[1].text <= 26 and #sub[2].text <= 26 and #sub[3].text <= 26)
+    check("menu entry is named LiveLight", items.livelight.text == "LiveLight")
+    check("under Taps and gestures with four items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 4)
+    check("both on by default", sub[1].checked_func() and sub[2].checked_func())
+    check("edges show their choice: brightness left, warmth right", sub[3].text_func() == "Left edge: Brightness" and sub[4].text_func() == "Right edge: Warmth", sub[3].text_func())
+    local right = sub[4].sub_item_table
+    check("each edge offers brightness, warmth or off, as radio buttons", #right == 3 and right[1].text == "Brightness" and right[2].text == "Warmth" and right[3].text == "Off" and right[3].radio)
+    check("only the current choice is marked", right[2].checked_func() and not right[1].checked_func() and not right[3].checked_func())
+    right[3].callback()
+    check("picking Off is saved and shown on the edge's line", settings.livelight.right_edge == "off" and sub[4].text_func() == "Right edge: Off" and right[3].checked_func())
+    check("the choice list stays open to show the new mark", right[3].keep_menu_open == true)
+    right[2].callback()
+    check("every label is short enough for the menu", #sub[1].text <= 26 and #sub[2].text <= 26 and #sub[3].text_func() <= 26 and #"Right edge: Brightness" <= 26)
+    check("edge lines usable while the plugin is on", sub[3].enabled_func() == true and sub[4].enabled_func() == true)
     sub[2].callback(); check("box toggle saved", settings.livelight.show_level == false); sub[2].callback()
     sub[1].callback(); check("main toggle saved; box toggle grayed out with it", settings.livelight.enabled == false and sub[2].enabled_func() == false)
     sub[1].callback(); check("and back on", settings.livelight.enabled == true and sub[2].enabled_func() == true)
@@ -464,6 +473,33 @@ do
     lift()
     down(RIGHT, 800)
     check("right edge is brightness", slide(RIGHT, 500) == true and powerd.fl_intensity > 40)
+    lift()
+end
+do
+    fresh("one edge turned off")
+    settings.livelight = { left_edge = "brightness", right_edge = "off" }
+    down(RIGHT, 1000)
+    check("right edge pan passed on to the gesture manager", slide(RIGHT, 700) == false and lift() == false and #light_log == 0)
+    down(RIGHT, 1000)
+    check("right edge flick passed on too", flick() == false and #light_log == 0)
+    down(LEFT, 1000)
+    check("left edge still brightness", slide(LEFT, 700) == true and powerd.fl_intensity > 40)
+    lift()
+    fresh("both edges brightness")
+    settings.livelight = { left_edge = "brightness", right_edge = "brightness" }
+    down(RIGHT, 1000)
+    check("right edge is brightness as well", slide(RIGHT, 700) == true and powerd.fl_intensity > 40 and powerd.fl_warmth == 50)
+    lift()
+    fresh("edge menu on a device without warmth")
+    has_warmth = false
+    local items = {}
+    plugin:addToMainMenu(items)
+    local sub = items.livelight.sub_item_table
+    check("warmth is not offered", #sub[4].sub_item_table == 2 and sub[4].sub_item_table[2].text == "Off")
+    check("and the right edge, set to warmth by default, says Off", sub[4].text_func() == "Right edge: Off" and sub[4].sub_item_table[2].checked_func())
+    sub[4].sub_item_table[1].callback()
+    down(RIGHT, 1000)
+    check("choosing brightness there makes the right edge work", slide(RIGHT, 700) == true and powerd.fl_intensity > 40)
     lift()
 end
 do
