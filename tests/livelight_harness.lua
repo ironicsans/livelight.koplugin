@@ -142,6 +142,12 @@ local L = dofile(PLUGIN .. "/main.lua")
 -- a fixed amount and shows its own popup.
 local gm_log = {}
 local gestures
+-- The gesture manager's swipe zones, as the Gestures plugin registers them.
+local gm_zones = {
+    one_finger_swipe_left_edge_up = { gs_range = { range = { x = 0, y = 0, w = W / 8, h = H } } },
+    one_finger_swipe_right_edge_up = { gs_range = { range = { x = W * 7 / 8, y = 0, w = W / 8, h = H } } },
+    one_finger_swipe_bottom_edge_right = { gs_range = { range = { x = 0, y = H * 7 / 8, w = W, h = H / 8 } } },
+}
 local function newGestures()
     gestures = { gestures = {} }
     function gestures:gestureAction(action, ges) gm_log[#gm_log + 1] = action; return true end
@@ -156,6 +162,7 @@ local function newPlugin(document)
         document = document,
         menu = { registerToMainMenu = function() end },
         gestures = gestures,
+        _zones = gm_zones,
         registerTouchZones = function(_, list)
             for _, z in ipairs(list) do zones[z.ges] = z; zone_order[#zone_order + 1] = z.id end
         end,
@@ -544,8 +551,9 @@ do
     plugin:addToMainMenu(items)
     local sub = items.livelight.sub_item_table
     check("menu entry is named LiveLight", items.livelight.text == "LiveLight")
-    check("under Taps and gestures with five items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 5)
-    check("fast mode is off by default, and short enough for the menu", not sub[5].checked_func() and #sub[5].text <= 26)
+    check("under Taps and gestures with six items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 6)
+    check("fast mode is off by default, and short enough for the menu", not sub[6].checked_func() and #sub[6].text <= 26)
+    check("following the gesture manager is on by default, and short enough for the menu", sub[5].checked_func() and #sub[5].text <= 26)
     check("both on by default", sub[1].checked_func() and sub[2].checked_func())
     check("edges show their choice: brightness left, warmth right", sub[3].text_func() == "Left edge: Brightness" and sub[4].text_func() == "Right edge: Warmth", sub[3].text_func())
     local right = sub[4].sub_item_table
@@ -750,6 +758,51 @@ do
     check("pans go to the list", #light_log == 0 and menu_log[1] == "pan")
     finger.y = 1300; list:flick()
     check("swipes too", menu_log[#menu_log] == "closed")
+end
+
+do
+    fresh("sliders follow the gesture manager's light swipes")
+    gestures.gestures.one_finger_swipe_bottom_edge_right = { increase_frontlight = 0 }
+    local BOTTOM = H - 40
+    down(200, BOTTOM)
+    check("a sideways slide along the bottom edge is kept", slide(200 + PAN_THRESHOLD + 1, BOTTOM) == true)
+    slide(200 + PAN_THRESHOLD + 1 + W * 0.7 * 0.2, BOTTOM)
+    check("rightward is brighter, a fifth of the travel is +20", powerd.fl_intensity == 60, powerd.fl_intensity)
+    lift()
+    down(200, BOTTOM)
+    check("an upward slide from the bottom edge is not this slider's", slide(200, BOTTOM - 300) == false)
+    lift()
+    down(LEFT, 1000)
+    check("the left edge is set aside while the gesture manager has a light swipe elsewhere", slide(LEFT, 700) == false and powerd.fl_intensity == 60, powerd.fl_intensity)
+    lift()
+    down(400, BOTTOM); finger.x = 400 - W * 0.7 * 0.1
+    check("a leftward flick along it is kept", flick() == true and powerd.fl_intensity == 50, powerd.fl_intensity)
+    gestures.gestures.one_finger_swipe_bottom_edge_right = nil
+    gestures.gestures.one_finger_swipe_left_edge_up = { decrease_frontlight_warmth = 0 }
+    advance(5)
+    down(LEFT, 1000)
+    slide(LEFT, 1000 - PAN_THRESHOLD - FULL * 0.3)
+    check("warmth put on the left edge", powerd:toNativeWarmth(powerd.fl_warmth) == 8 and powerd.fl_intensity == 50, log())
+    lift()
+    down(RIGHT, 1000)
+    check("and the right edge, with nothing assigned, is passed on", slide(RIGHT, 700) == false)
+    lift()
+    gestures.gestures.one_finger_swipe_left_edge_up = nil
+    down(LEFT, 1000)
+    check("with nothing assigned any more, the edge settings are back", slide(LEFT, 700) == true)
+    lift()
+    gestures.gestures.one_finger_swipe_left_edge_up = { toggle_bookmark = true }
+    down(LEFT, 1000)
+    check("a swipe with another action is left to the gesture manager (edge settings used elsewhere)", slide(LEFT, 700) == true)
+    lift()
+    gestures.gestures.one_finger_swipe_right_edge_up = { increase_frontlight_warmth = 0 }
+    down(LEFT, 1000)
+    check("once some swipe has a light action, a swipe with another action is not a slider", slide(LEFT, 700) == false)
+    lift()
+    settings.livelight = { enabled = true, follow_gestures = false }
+    down(LEFT, 1000)
+    check("with the gesture manager switched off in settings, the edges are back", slide(LEFT, 700) == true)
+    lift()
 end
 
 print(failures == 0 and "\nALL PASSED" or ("\n" .. failures .. " FAILED"))
