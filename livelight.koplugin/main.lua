@@ -243,7 +243,11 @@ end
 
 function LevelBox:onCloseWidget()
     UIManager:unschedule(self.add_word)
-    UIManager:setDirty(nil, function() return "ui", self.frame.dimen end)
+    -- After a fast-mode slide the box was drawn in the black-and-white mode
+    -- all at once, which the smooth mode can leave a faint ghost of; a
+    -- flashing update of just that spot clears it.
+    local mode = self.flash_on_close and "flashui" or "ui"
+    UIManager:setDirty(nil, function() return mode, self.frame.dimen end)
 end
 
 -- ── Slide state ─────────────────────────────────────────────────────────────
@@ -388,6 +392,7 @@ finish = function()
     else
         UIManager:unschedule(hideBox)
     end
+    if box then box.flash_on_close = s.fast end
     if s.fast then
         -- The box is the first thing drawn after a fast-mode slide, so give
         -- it a little longer on screen.

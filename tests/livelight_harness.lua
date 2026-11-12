@@ -472,7 +472,8 @@ do
     check("the box with the final level once lifted", boxText() == "Brightness " .. powerd.fl_intensity, boxText())
     check("drawn with its number at once", dirty[1] and dirty[1].text == boxText(), dirty[1] and dirty[1].text)
     advance(1.1); check("still there a second later", boxVisible())
-    advance(0.5); check("then gone", not boxVisible())
+    dirty = {}
+    advance(0.5); check("then gone, with a flashing update of that spot so no ghost is left", not boxVisible() and #dirty == 1 and dirty[1].mode == "flashui" and dirty[1].part == "page", dirty[1] and dirty[1].mode)
     fresh("fast mode: sliding the light off and back on in one go")
     settings.livelight = { enabled = true, fast_mode = true }
     powerd.fl_intensity = 30
