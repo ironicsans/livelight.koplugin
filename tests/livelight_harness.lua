@@ -443,6 +443,15 @@ do
     check("the new level is announced before sleeping, and only once", broadcasts == 1 and log():find("resume%-state"), log())
     advance(1)
     check("not again afterwards", broadcasts == 1, broadcasts)
+    fresh("fast mode: a new slide right after one that turned the light off")
+    settings.livelight = { enabled = true, fast_mode = true }
+    powerd.fl_intensity = 5
+    -- Both within the moment the first one's announcement waits.
+    down(LEFT, 400); slide(LEFT, 800, 0.0005); lift()
+    down(LEFT, 1000); slide(LEFT, 1000 - PAN_THRESHOLD - 1 - FULL * 0.2, 0.0005); lift()
+    advance(0.1)
+    check("the light stays on at the new level", powerd.is_fl_on and powerd.fl_intensity >= 19, log())
+    check("both slides announced, the first one first", broadcasts == 2, broadcasts)
     fresh("device sleeps mid-slide in fast mode")
     settings.livelight = { enabled = true, fast_mode = true }
     down(LEFT, 1000); slide(LEFT, 800)

@@ -312,7 +312,12 @@ end
 
 local finish
 
+local commitPending
+
 local function begin(key, control, y)
+    -- A fast-mode slide that ended moments ago is announced before this one
+    -- starts, so its late announcement cannot undo this one.
+    commitPending()
     local powerd = Device:getPowerDevice()
     local min, max = control.range(powerd)
     local level = control.get(powerd)
@@ -369,7 +374,7 @@ end
 -- A fast-mode slide that has ended but not been announced yet.
 local pending_commit = nil
 
-local function commitPending()
+commitPending = function()
     UIManager:unschedule(commitPending)
     local s = pending_commit
     pending_commit = nil
