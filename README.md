@@ -59,6 +59,7 @@ Top menu → gear icon → Taps and gestures → LiveLight:
 - **Enable LiveLight**: the main on/off switch.
 - **Show level while sliding**: show or hide the box with the number.
 - **Left edge** and **Right edge**: what each edge does. Choose **Brightness**, **Warmth** or **Off**. An edge set to Off goes back to whatever you've set for it in KOReader's own gesture settings.
+- **Fast mode**: change only the light while your finger moves, and show the level once you lift. KOReader's footer and status bars are then updated once, at the end, instead of on every step. Try it if the light lags behind your finger; off by default.
 
 ![Settings](images/settings.jpg)
 
