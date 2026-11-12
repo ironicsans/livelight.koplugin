@@ -65,6 +65,8 @@ local DRAW_INTERVAL = 0.15
 -- one slow, smooth update of the whole box.
 local WORD_AFTER = 0.1
 local HIDE_AFTER = 1
+local HIDE_AFTER_FAST = 1.5
+local COMMIT_AFTER = 0.05
 -- A slide whose lift is never reported (a second finger joined, or the screen
 -- underneath changed) is wound up after this long without news of it.
 local GIVE_UP_AFTER = 5
@@ -360,12 +362,24 @@ local function commit(s)
     powerd:updateResumeFrontlightState()
 end
 
+-- A fast-mode slide that has ended but not been announced yet.
+local pending_commit = nil
+
+local function commitPending()
+    UIManager:unschedule(commitPending)
+    local s = pending_commit
+    pending_commit = nil
+    if s then commit(s) end
+end
+
 finish = function()
     UIManager:unschedule(finish)
+    -- A slide that ended moments ago is announced before the next one ends.
+    commitPending()
     if not slide then return end
     local s = slide
     slide = nil
-    commit(s)
+    if not s.fast then commit(s) end
     UIManager:unschedule(releaseDraw)
     draw_held, draw_wanted = false, false
     -- The last change may still have been waiting its turn to be drawn.
@@ -374,10 +388,24 @@ finish = function()
     else
         UIManager:unschedule(hideBox)
     end
-    UIManager:scheduleIn(HIDE_AFTER, hideBox)
+    if s.fast then
+        -- The box is the first thing drawn after a fast-mode slide, so give
+        -- it a little longer on screen.
+        UIManager:scheduleIn(HIDE_AFTER_FAST, hideBox)
+        -- The footer and status bars are told a moment later, so that their
+        -- redraws do not go out in the same screen update as the box and hold
+        -- up its number. (A task due at once would still run before that
+        -- update is sent.)
+        pending_commit = s
+        UIManager:scheduleIn(COMMIT_AFTER, commitPending)
+    else
+        UIManager:scheduleIn(HIDE_AFTER, hideBox)
+    end
 end
 
 local function abandon()
+    -- Before the device sleeps, so the light it wakes up to is the new one.
+    commitPending()
     if slide then commit(slide) end
     slide, passed_on = nil, nil
     UIManager:unschedule(finish)

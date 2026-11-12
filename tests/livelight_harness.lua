@@ -101,7 +101,10 @@ local stubs = {
     ["ui/widget/verticalgroup"] = widgetClass(),
     ["ui/widget/verticalspan"] = widgetClass(),
     ["ui/uimanager"] = {
-        scheduleIn = function(_, delay, fn) tasks[#tasks + 1] = { at = now + delay, fn = fn } end,
+        scheduleIn = function(_, delay, fn, ...)
+            local args = { n = select("#", ...), ... }
+            tasks[#tasks + 1] = { at = now + delay, fn = args.n == 0 and fn or function() fn(unpack(args, 1, args.n)) end }
+        end,
         unschedule = function(_, fn) for i = #tasks, 1, -1 do if tasks[i].fn == fn then table.remove(tasks, i) end end end,
         show = function(_, w) shown[#shown + 1] = w; w.visible = true; if w.onShow then w:onShow() end end,
         close = function(_, w) w.visible = false; if w.onCloseWidget then w:onCloseWidget() end end,
@@ -433,6 +436,13 @@ do
     down(LEFT, 1000); slide(LEFT, 800)
     plugin:onSuspend()
     check("box removed, nothing left scheduled", not boxVisible() and #tasks == 0, #tasks)
+    fresh("device sleeps just after a fast-mode slide")
+    settings.livelight = { enabled = true, fast_mode = true }
+    down(LEFT, 1000); slide(LEFT, 800); lift()
+    plugin:onSuspend()
+    check("the new level is announced before sleeping, and only once", broadcasts == 1 and log():find("resume%-state"), log())
+    advance(1)
+    check("not again afterwards", broadcasts == 1, broadcasts)
     fresh("device sleeps mid-slide in fast mode")
     settings.livelight = { enabled = true, fast_mode = true }
     down(LEFT, 1000); slide(LEFT, 800)
@@ -449,8 +459,10 @@ do
     slide(LEFT, 1000 - PAN_THRESHOLD - FULL * 0.3)
     check("30 steps, no broadcast while the finger is down", powerd.fl_intensity == 70 and broadcasts == 0, broadcasts)
     lift()
-    check("one broadcast on the lift", broadcasts == 1, broadcasts)
-    down(RIGHT, 800); slide(RIGHT, 500); flick()
+    check("the box goes out first, before anything else is told", #dirty >= 1 and broadcasts == 0, broadcasts)
+    advance(0.1)
+    check("then one broadcast", broadcasts == 1, broadcasts)
+    down(RIGHT, 800); slide(RIGHT, 500); flick(); advance(0.1)
     check("warmth too: one more, on the closing swipe", broadcasts == 2, broadcasts)
     fresh("fast mode: nothing drawn until the finger lifts")
     settings.livelight = { enabled = true, fast_mode = true }
@@ -458,11 +470,13 @@ do
     check("no box while sliding", #shown == 0 and #dirty == 0, #dirty)
     lift()
     check("the box with the final level once lifted", boxText() == "Brightness " .. powerd.fl_intensity, boxText())
-    advance(1.1); check("then gone", not boxVisible())
+    check("drawn with its number at once", dirty[1] and dirty[1].text == boxText(), dirty[1] and dirty[1].text)
+    advance(1.1); check("still there a second later", boxVisible())
+    advance(0.5); check("then gone", not boxVisible())
     fresh("fast mode: sliding the light off and back on in one go")
     settings.livelight = { enabled = true, fast_mode = true }
     powerd.fl_intensity = 30
-    down(LEFT, 400); slide(LEFT, 1000); lift()
+    down(LEFT, 400); slide(LEFT, 1000); lift(); advance(0.1)
     check("off at the end, the level to return to is where the slide began", not powerd.is_fl_on and powerd.fl_intensity == 30, powerd.fl_intensity)
 end
 do
