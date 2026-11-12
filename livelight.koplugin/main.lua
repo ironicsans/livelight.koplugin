@@ -74,6 +74,7 @@ local function settings()
     if type(stored) ~= "table" then stored = {} end
     if stored.enabled == nil then stored.enabled = true end
     if stored.show_level == nil then stored.show_level = true end
+    if stored.fast_mode == nil then stored.fast_mode = false end
     -- What each edge does: "brightness", "warmth" or "off". Before these
     -- existed there was only a swap_sides switch, which they start out from.
     if stored.left_edge == nil then
@@ -96,12 +97,35 @@ end
 local brightness = {
     range = function(powerd) return powerd.fl_min, powerd.fl_max end,
     get = function(powerd) return powerd:frontlightIntensity() end,
-    set = function(powerd, level)
-        -- Same rule as KOReader's own gesture: zero means off.
-        if level <= 0 then
-            powerd:turnOffFrontlight()
-        else
-            powerd:setIntensity(level)
+    set = function(powerd, level, fast)
+        if not fast then
+            -- Same rule as KOReader's own gesture: zero means off.
+            if level <= 0 then
+                powerd:turnOffFrontlight()
+            else
+                powerd:setIntensity(level)
+            end
+            return
+        end
+        -- Fast mode: only the light itself is changed while the finger moves.
+        -- powerd:setIntensity() also broadcasts FrontlightStateChanged on
+        -- every step, and the reader's footer (and home-screen status bars)
+        -- redraw themselves on each one; on some devices those e-ink refreshes
+        -- make the light trail behind the finger. finish() tells the rest of
+        -- KOReader once. The level to come back to when the light is next
+        -- turned on is kept, as in KOReader: zero is "off", not a level.
+        if level > powerd.fl_min then
+            powerd.fl_intensity = level
+        end
+        powerd:setIntensityHW(level)
+        powerd:_decideFrontlightState()
+    end,
+    -- After a fast-mode slide, leave powerd as its own API would have: zero
+    -- means off, and turning it back on returns to where the slide began.
+    commit = function(powerd, level, start)
+        if level <= powerd.fl_min then
+            if start > powerd.fl_min then powerd.fl_intensity = start end
+            if powerd:isFrontlightOn() then powerd:turnOffFrontlight() end
         end
     end,
     name = _("Brightness"),
@@ -115,7 +139,16 @@ local brightness = {
 local warmth = {
     range = function(powerd) return powerd.fl_warmth_min, powerd.fl_warmth_max end,
     get = function(powerd) return powerd:toNativeWarmth(powerd:frontlightWarmth()) end,
-    set = function(powerd, level) powerd:setWarmth(powerd:fromNativeWarmth(level)) end,
+    set = function(powerd, level, fast)
+        if not fast then
+            powerd:setWarmth(powerd:fromNativeWarmth(level))
+            return
+        end
+        -- Fast mode: hardware only while sliding, as for brightness.
+        powerd.fl_warmth = powerd:fromNativeWarmth(level)
+        powerd:setWarmthHW(level)
+    end,
+    commit = function() end,
     name = _("Warmth"),
     value = function(powerd, level) return tostring(level) end,
 }
@@ -287,11 +320,13 @@ local function begin(key, control, y)
         -- light does not jump by the distance it took to be seen as a slide.
         anchor_y = y,
         level = level,
+        fast = settings().fast_mode,
     }
     box_name, box_value = control.name, control.value(powerd, level)
     -- What the number's slot is sized for: this control's own top value.
     box_widest = control.value(powerd, max)
-    drawBoxSoon()
+    -- In fast mode nothing is drawn until the finger lifts.
+    if not slide.fast then drawBoxSoon() end
 end
 
 local function moveTo(y)
@@ -309,17 +344,28 @@ local function moveTo(y)
     if level == slide.level then return end
     slide.level = level
     local powerd = Device:getPowerDevice()
-    slide.control.set(powerd, level)
+    slide.control.set(powerd, level, slide.fast)
     box_value = slide.control.value(powerd, level)
-    drawBoxSoon()
+    if not slide.fast then drawBoxSoon() end
+end
+
+local function commit(s)
+    local powerd = Device:getPowerDevice()
+    if s.fast then
+        -- Tell the rest of KOReader (footer, status bars) about the new level, once.
+        s.control.commit(powerd, s.level, s.start)
+        powerd:stateChanged()
+    end
+    -- As KOReader's own gesture does, so waking from sleep restores this state.
+    powerd:updateResumeFrontlightState()
 end
 
 finish = function()
     UIManager:unschedule(finish)
     if not slide then return end
+    local s = slide
     slide = nil
-    -- As KOReader's own gesture does, so waking from sleep restores this state.
-    Device:getPowerDevice():updateResumeFrontlightState()
+    commit(s)
     UIManager:unschedule(releaseDraw)
     draw_held, draw_wanted = false, false
     -- The last change may still have been waiting its turn to be drawn.
@@ -332,6 +378,7 @@ finish = function()
 end
 
 local function abandon()
+    if slide then commit(slide) end
     slide, passed_on = nil, nil
     UIManager:unschedule(finish)
     UIManager:unschedule(releaseDraw)
@@ -529,6 +576,35 @@ function LiveLight:init()
             handler = onSwipe,
         },
     })
+    self:wrapGestures()
+end
+
+-- Some home screens (ZenOS, for one) offer every gesture to the gesture
+-- manager's zones first, ahead of the zone order above. The lift at the end
+-- of a slide then also ran the gesture manager's own edge-swipe light action,
+-- a second jump with its own popup. So that action is offered here first.
+local EDGE_ACTIONS = {
+    one_finger_swipe_left_edge_down = true,
+    one_finger_swipe_left_edge_up = true,
+    one_finger_swipe_right_edge_down = true,
+    one_finger_swipe_right_edge_up = true,
+}
+
+function LiveLight:wrapGestures()
+    local gestures = self.ui.gestures
+    if not gestures or gestures._livelight_wrapped then return end
+    gestures._livelight_wrapped = true
+    local gestureAction = gestures.gestureAction
+    gestures.gestureAction = function(this, action, ges)
+        -- Only the closing swipe. The gesture manager also has a "..._pan" zone
+        -- beside each swipe, offered every pan of the slide on such home
+        -- screens; taking those for the end of the slide would restart it on
+        -- every step while the finger is still over the edge.
+        if EDGE_ACTIONS[action] and ges and ges.ges == "swipe" and ges.pos and onSwipe(ges) then
+            return true
+        end
+        return gestureAction(this, action, ges)
+    end
 end
 
 function LiveLight:onSuspend()
@@ -598,6 +674,13 @@ function LiveLight:addToMainMenu(menu_items)
             },
             edgeMenuItem("left_edge", _("Left edge")),
             edgeMenuItem("right_edge", _("Right edge")),
+            {
+                text = _("Fast mode"),
+                help_text = _("Change only the light while your finger moves, and show the level once you lift it. KOReader's footer and status bars are updated once, at the end, instead of on every step.\n\nTry this if the light lags behind your finger: on some devices those redraws slow the slide down."),
+                enabled_func = function() return settings().enabled end,
+                checked_func = function() return settings().fast_mode end,
+                callback = function() saveSetting("fast_mode", not settings().fast_mode) end,
+            },
         },
     }
 end

@@ -43,6 +43,17 @@ function powerd:setWarmth(w)
     return true
 end
 function powerd:updateResumeFrontlightState() light_log[#light_log + 1] = "resume-state" end
+-- What a slide uses while the finger moves: the light only, no broadcast.
+function powerd:setIntensityHW(n)
+    self.hw_intensity = n
+    light_log[#light_log + 1] = n > self.fl_min and ("b" .. n) or "off"
+end
+function powerd:_decideFrontlightState() self.is_fl_on = self.hw_intensity > self.fl_min end
+function powerd:isFrontlightOn() return self.is_fl_on end
+function powerd:setWarmthHW(n) light_log[#light_log + 1] = "w" .. n end
+-- The FrontlightStateChanged broadcast the footer and status bars redraw on.
+local broadcasts = 0
+function powerd:stateChanged() broadcasts = broadcasts + 1 end
 
 local function widgetClass()
     local cls = {}
@@ -124,6 +135,16 @@ end
 
 local L = dofile(PLUGIN .. "/main.lua")
 
+-- The gesture manager, as far as its edge swipes go: the light action jumps by
+-- a fixed amount and shows its own popup.
+local gm_log = {}
+local gestures
+local function newGestures()
+    gestures = { gestures = {} }
+    function gestures:gestureAction(action, ges) gm_log[#gm_log + 1] = action; return true end
+end
+newGestures()
+
 -- The plugin's zones, as registered on a fake reader.
 local zones, zone_order = {}, {}
 local function newPlugin(document)
@@ -131,6 +152,7 @@ local function newPlugin(document)
     return L:new{ ui = {
         document = document,
         menu = { registerToMainMenu = function() end },
+        gestures = gestures,
         registerTouchZones = function(_, list)
             for _, z in ipairs(list) do zones[z.ges] = z; zone_order[#zone_order + 1] = z.id end
         end,
@@ -195,9 +217,11 @@ local function fresh(case)
     advance(5)
     if plugin then plugin:onSuspend() end
     tasks, shown, dirty, light_log = {}, {}, {}, {}
+    broadcasts = 0
     settings = {}
     has_warmth = true
     powerd.fl_intensity, powerd.is_fl_on, powerd.fl_warmth = 40, true, 50
+    newGestures()
     plugin = newPlugin()
 end
 
@@ -409,6 +433,67 @@ do
     down(LEFT, 1000); slide(LEFT, 800)
     plugin:onSuspend()
     check("box removed, nothing left scheduled", not boxVisible() and #tasks == 0, #tasks)
+    fresh("device sleeps mid-slide in fast mode")
+    settings.livelight = { enabled = true, fast_mode = true }
+    down(LEFT, 1000); slide(LEFT, 800)
+    plugin:onSuspend()
+    check("the level it got to is still announced", broadcasts == 1, broadcasts)
+end
+do
+    fresh("by default, every step goes through powerd as before")
+    down(LEFT, 1000); slide(LEFT, 1000 - PAN_THRESHOLD - FULL * 0.1); lift()
+    check("set with setIntensity step by step, nothing extra announced", powerd.fl_intensity >= 49 and broadcasts == 0 and log():sub(1, 3) == "b41", log())
+    fresh("fast mode: the rest of KOReader hears about a slide once, when it ends")
+    settings.livelight = { enabled = true, fast_mode = true }
+    down(LEFT, 1000)
+    slide(LEFT, 1000 - PAN_THRESHOLD - FULL * 0.3)
+    check("30 steps, no broadcast while the finger is down", powerd.fl_intensity == 70 and broadcasts == 0, broadcasts)
+    lift()
+    check("one broadcast on the lift", broadcasts == 1, broadcasts)
+    down(RIGHT, 800); slide(RIGHT, 500); flick()
+    check("warmth too: one more, on the closing swipe", broadcasts == 2, broadcasts)
+    fresh("fast mode: nothing drawn until the finger lifts")
+    settings.livelight = { enabled = true, fast_mode = true }
+    down(LEFT, 1000); slide(LEFT, 700)
+    check("no box while sliding", #shown == 0 and #dirty == 0, #dirty)
+    lift()
+    check("the box with the final level once lifted", boxText() == "Brightness " .. powerd.fl_intensity, boxText())
+    advance(1.1); check("then gone", not boxVisible())
+    fresh("fast mode: sliding the light off and back on in one go")
+    settings.livelight = { enabled = true, fast_mode = true }
+    powerd.fl_intensity = 30
+    down(LEFT, 400); slide(LEFT, 1000); lift()
+    check("off at the end, the level to return to is where the slide began", not powerd.is_fl_on and powerd.fl_intensity == 30, powerd.fl_intensity)
+end
+do
+    fresh("a home screen that offers swipes to the gesture manager first")
+    gm_log = {}
+    down(LEFT, 1000); slide(LEFT, 700)
+    local level = powerd.fl_intensity
+    check("the closing swipe reaches the gesture manager's edge action first, and is taken from it",
+        gestures:gestureAction("one_finger_swipe_left_edge_up", { ges = "swipe", direction = "north",
+            pos = { x = LEFT, y = 1000 }, end_pos = { x = LEFT, y = 700 } }) == true and #gm_log == 0, #gm_log)
+    check("no second jump", powerd.fl_intensity == level, powerd.fl_intensity)
+    fresh("a home screen that offers every pan to the gesture manager's pan zones too")
+    settings.livelight = { enabled = true, fast_mode = true }
+    gm_log = {}
+    down(LEFT, 1000)
+    for y = 1000, 600, -10 do
+        -- As ZenOS does: the gesture manager's pan zone first, then the list.
+        gestures:gestureAction("one_finger_swipe_left_edge_up_pan", { ges = "pan", pos = { x = LEFT, y = y },
+            start_pos = { x = LEFT, y = 1000 }, relative = { x = 0, y = y - 1000 } })
+        to(LEFT, y)
+    end
+    check("the slide keeps going over the edge, not restarted on every pan", powerd.fl_intensity > 70 and broadcasts == 0, powerd.fl_intensity)
+    check("and nothing drawn yet", #shown == 0, #shown)
+    lift()
+    gm_log = {}
+    down(MIDDLE, 1000); finger.y = 700
+    gestures:gestureAction("one_finger_swipe_left_edge_up", { ges = "swipe", direction = "north",
+        pos = { x = MIDDLE, y = 1000 }, end_pos = { x = MIDDLE, y = 700 } })
+    check("anything that is not an edge slide is the gesture manager's", gm_log[1] == "one_finger_swipe_left_edge_up", gm_log[1])
+    gestures:gestureAction("tap_top_left_corner", { ges = "tap", pos = { x = LEFT, y = 10 } })
+    check("and so are its other actions", gm_log[2] == "tap_top_left_corner", gm_log[2])
 end
 do
     fresh("zones and menu")
@@ -435,7 +520,8 @@ do
     plugin:addToMainMenu(items)
     local sub = items.livelight.sub_item_table
     check("menu entry is named LiveLight", items.livelight.text == "LiveLight")
-    check("under Taps and gestures with four items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 4)
+    check("under Taps and gestures with five items", items.livelight.sorting_hint == "taps_and_gestures" and #sub == 5)
+    check("fast mode is off by default, and short enough for the menu", not sub[5].checked_func() and #sub[5].text <= 26)
     check("both on by default", sub[1].checked_func() and sub[2].checked_func())
     check("edges show their choice: brightness left, warmth right", sub[3].text_func() == "Left edge: Brightness" and sub[4].text_func() == "Right edge: Warmth", sub[3].text_func())
     local right = sub[4].sub_item_table
