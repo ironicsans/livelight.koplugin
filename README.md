@@ -58,9 +58,17 @@ Top menu → gear icon → Taps and gestures → LiveLight:
 
 - **Enable LiveLight**: the main on/off switch.
 - **Show level while sliding**: show or hide the box with the number.
-- **Left edge** and **Right edge**: what each edge does. Choose **Brightness**, **Warmth** or **Off**. An edge set to Off goes back to whatever you've set for it in KOReader's own gesture settings.
+- **Left edge** and **Right edge**: what each edge does, when not following the gesture manager. Choose **Brightness**, **Warmth** or **Off**. An edge set to Off goes back to whatever you've set for it in KOReader's own gesture settings.
+- **Follow gesture manager**: put the sliders wherever the gesture manager has a light action on a one-finger swipe (see below). On by default.
+- **Fast mode**: change only the light while your finger moves, and show the level once you lift. KOReader's footer and status bars are then updated once, at the end, instead of on every step. Try it if the light lags behind your finger; off by default.
 
 ![Settings](images/settings.jpg)
+
+### Putting the sliders somewhere else
+
+LiveLight follows KOReader's gesture manager (Taps and gestures → Gesture manager → One-finger swipe). Every one-finger swipe set to increase or decrease the frontlight brightness or warmth becomes a live slider in that same place. KOReader sets the left edge to brightness and the right edge to warmth by default, which is why those are the sliders out of the box. Give the light action to another swipe to move the slider there; along the top and bottom edges it runs sideways, rightward for more.
+
+If no swipe has a light action, or **Follow gesture manager** is switched off in LiveLight's settings, the **Left edge** and **Right edge** settings are used instead.
 
 ## Where it works
 
